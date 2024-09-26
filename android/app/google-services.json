@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "780904927424",
+    "project_id": "andro-inc-4a906",
+    "storage_bucket": "andro-inc-4a906.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780904927424:android:46c786c6f856d598b4dd25",
+        "android_client_info": {
+          "package_name": "com.example.andro_inc_prueba"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhxCxyt1AdcTKnU8urt8339itk489UZDM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,8 @@
+- Manejo de trabajos por empleado: En una pantalla de cada usuario/empleado debe de reflejarse los trabajos semanales creados por la administracion. Esto se hara
+por medio de la base de datos(Firebase) que es donde se encuentran/encontraran subidos todos los trabajos
+
+-Envio de horas trabajadas: En otra pantalla de los empleados se deberan de agregar horas diarias trabajadas. Al terminar cada dia se debera de cerrar el mismo
+deshabilitando de esta manera el dia para evitar modificaciones futuras. Asimismo al finalizar una semana se debe de poder darle "Submit" a las horas trabajadas
+para ser aprobadas por los administradores antes de cerrar la semana.
+
+-Para los usuarios administradores se debe de hacer una pantalla para aprobar las horas semanales de cada empleado/usuario.
