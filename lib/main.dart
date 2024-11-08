@@ -30,6 +30,8 @@ class MainApp extends StatelessWidget {
 }
 
 class AuthCheck extends StatefulWidget {
+  const AuthCheck({super.key});
+
   @override
   _AuthCheckState createState() => _AuthCheckState();
 }
@@ -86,6 +88,8 @@ class _AuthCheckState extends State<AuthCheck> {
 }
 
 class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
   @override
   _LoginPageState createState() => _LoginPageState();
 }
@@ -282,7 +286,7 @@ class _AdminPageState extends State<AdminPage> {
               child: Text('Menu'),
             ),
             ListTile(
-              title: const Text('Worked Weeks'),
+              title: const Text('Semanas trabajadas'),
               onTap: () {
                 Navigator.push(
                   context,
@@ -292,7 +296,7 @@ class _AdminPageState extends State<AdminPage> {
               },
             ),
             ListTile(
-              title: const Text('Work Days'),
+              title: const Text('Días laborados'),
               onTap: () {
                 Navigator.push(
                   context,
@@ -302,7 +306,17 @@ class _AdminPageState extends State<AdminPage> {
               },
             ),
             ListTile(
-              title: const Text('Logout'),
+              title: const Text('Cuadrillas'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const WorkedCuadrillaPage()),
+                );
+              },
+            ),
+            ListTile(
+              title: const Text('Cerrar sesión'),
               onTap: () {
                 _logout(context);
               },
@@ -347,9 +361,46 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
             'jobs': doc['jobs'] ?? [],
           };
         }).toList();
+
+        // Si la colección está vacía, crear la primera semana
+        if (localWeeks.isEmpty) {
+          _createFirstWeek();
+        } else {
+          // Ordenar las semanas en base al número en el ID de la semana
+          localWeeks.sort((a, b) {
+            int weekA =
+                int.tryParse(a['week'].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+            int weekB =
+                int.tryParse(b['week'].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+            return weekA.compareTo(weekB);
+          });
+        }
       });
     } catch (error) {
       print("Error al cargar las semanas: $error");
+    }
+  }
+
+  Future<void> _createFirstWeek() async {
+    try {
+      await weeksCollection.doc('Semana #1').set({
+        'week': 'Semana #1',
+        'description': 'Primera semana de trabajo',
+        'completed': false,
+        'jobs': [],
+      });
+      setState(() {
+        localWeeks.add({
+          'week': 'Semana #1',
+          'description': 'Primera semana de trabajo',
+          'completed': false,
+          'jobs': [],
+        });
+      });
+
+      print("Primera semana creada exitosamente");
+    } catch (error) {
+      print("Error al crear la primera semana: $error");
     }
   }
 
@@ -361,11 +412,11 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Edit Week ${localWeeks[index]['week']}'),
+          title: Text('Editar semana ${localWeeks[index]['week']}'),
           content: TextField(
             controller: controller,
-            decoration:
-                const InputDecoration(hintText: 'Enter new description'),
+            decoration: const InputDecoration(
+                hintText: 'Ingrese una nueva descripción'),
           ),
           actions: [
             TextButton(
@@ -382,7 +433,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
                   print("Error al actualizar la descripción: $error");
                 }
               },
-              child: const Text('Save'),
+              child: const Text('Guardar'),
             ),
           ],
         );
@@ -392,62 +443,142 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
 
   void _addJobToWeek(int index) {
     TextEditingController jobNameController = TextEditingController();
-    bool _isJobCompleted = false;
+    bool isJobCompleted = false;
+    String? selectedCuadrillaId;
+    Map<String, dynamic>? selectedCuadrillaDetails;
+    List<Map<String, dynamic>> cuadrillas = [];
+
+    final CollectionReference cuadrillasCollection =
+        FirebaseFirestore.instance.collection('worked_cuadrillas');
+
+    Future<List<Map<String, dynamic>>> _loadCuadrillas() async {
+      try {
+        QuerySnapshot snapshot = await cuadrillasCollection.get();
+        return snapshot.docs.map((doc) {
+          return {
+            'id': doc.id,
+            'description': doc['description'],
+            'responsable': doc['responsable'],
+          };
+        }).toList();
+      } catch (e) {
+        print("Error al cargar cuadrillas: $e");
+        return [];
+      }
+    }
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Add Job to Week ${localWeeks[index]['week']}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: jobNameController,
-                decoration: const InputDecoration(hintText: 'Enter job name'),
-              ),
-              CheckboxListTile(
-                title: Text("Completed"),
-                value: _isJobCompleted,
-                onChanged: (bool? value) {
-                  setState(() {
-                    _isJobCompleted = value ?? false;
-                  });
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future: _loadCuadrillas(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError ||
+                !snapshot.hasData ||
+                snapshot.data!.isEmpty) {
+              return AlertDialog(
+                title: const Text('Error'),
+                content: const Text('No se pudieron cargar las cuadrillas'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ],
+              );
+            }
+
+            cuadrillas = snapshot.data!;
+
+            return StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                return AlertDialog(
+                  title: Text(
+                      'Agregar trabajo a la semana ${localWeeks[index]['week']}'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: jobNameController,
+                        decoration: const InputDecoration(
+                          hintText: 'Nombre del trabajo',
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      DropdownButton<String>(
+                        value: selectedCuadrillaId,
+                        hint: const Text('Seleccionar Cuadrilla'),
+                        isExpanded: true,
+                        items: cuadrillas.map((cuadrilla) {
+                          return DropdownMenuItem<String>(
+                            value: cuadrilla['id'],
+                            child: Text(
+                                "${cuadrilla['description']} - Responsable: ${cuadrilla['responsable']}"),
+                          );
+                        }).toList(),
+                        onChanged: (String? value) {
+                          setState(() {
+                            selectedCuadrillaId = value;
+                            selectedCuadrillaDetails = cuadrillas.firstWhere(
+                                (cuadrilla) => cuadrilla['id'] == value);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Cancelar'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (jobNameController.text.isNotEmpty &&
+                            selectedCuadrillaId != null) {
+                          await weeksCollection
+                              .doc(localWeeks[index]['week'])
+                              .update({
+                            'jobs': FieldValue.arrayUnion([
+                              {
+                                'name': jobNameController.text.trim(),
+                                'completed': isJobCompleted,
+                                'cuadrillaId': selectedCuadrillaId,
+                                'cuadrillaDescription':
+                                    selectedCuadrillaDetails!['description'],
+                                'cuadrillaResponsable':
+                                    selectedCuadrillaDetails!['responsable'],
+                              }
+                            ])
+                          });
+
+                          setState(() {
+                            localWeeks[index]['jobs'].add({
+                              'name': jobNameController.text.trim(),
+                              'completed': isJobCompleted,
+                              'cuadrillaId': selectedCuadrillaId,
+                              'cuadrillaDescription':
+                                  selectedCuadrillaDetails!['description'],
+                              'cuadrillaResponsable':
+                                  selectedCuadrillaDetails!['responsable'],
+                            });
+                          });
+
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: const Text('Agregar'),
+                    ),
+                  ],
+                );
               },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (jobNameController.text.isNotEmpty) {
-                  // Add the new job to the jobs list for the current week
-                  await weeksCollection.doc(localWeeks[index]['week']).update({
-                    'jobs': FieldValue.arrayUnion([
-                      {
-                        'name': jobNameController.text.trim(),
-                        'completed': _isJobCompleted
-                      }
-                    ])
-                  });
-                  setState(() {
-                    localWeeks[index]['jobs'].add({
-                      'name': jobNameController.text.trim(),
-                      'completed': _isJobCompleted
-                    });
-                  });
-                  Navigator.of(context).pop();
-                }
-              },
-              child: const Text('Add'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -458,22 +589,33 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Jobs for Week ${localWeeks[index]['week']}'),
-          content: Container(
+          title: Text('Trabajos para la semana ${localWeeks[index]['week']}'),
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
               itemCount: localWeeks[index]['jobs'].length,
               itemBuilder: (BuildContext context, int jobIndex) {
+                var job = localWeeks[index]['jobs'][jobIndex];
                 return ListTile(
-                  title: Text(localWeeks[index]['jobs'][jobIndex]['name']),
+                  title: Text(job['name']),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (job['cuadrillaDescription'] != null &&
+                          job['cuadrillaResponsable'] != null)
+                        Text(
+                          'Cuadrilla: ${job['cuadrillaDescription']} - Responsable: ${job['cuadrillaResponsable']}',
+                        )
+                      else
+                        const Text('Cuadrilla: No asignada'),
+                    ],
+                  ),
                   trailing: Icon(
-                    localWeeks[index]['jobs'][jobIndex]['completed']
+                    job['completed']
                         ? Icons.check_circle_outline
                         : Icons.radio_button_unchecked,
-                    color: localWeeks[index]['jobs'][jobIndex]['completed']
-                        ? Colors.green
-                        : Colors.red,
+                    color: job['completed'] ? Colors.green : Colors.red,
                   ),
                 );
               },
@@ -484,7 +626,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: const Text('Close'),
+              child: const Text('Cerrar'),
             ),
           ],
         );
@@ -494,15 +636,15 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
 
   void _closeWeek(int index) async {
     if (index >= localWeeks.length) {
-      print("Index out of range");
+      print("Índice fuera de rango");
       return;
     }
 
     if (localWeeks[index]['completed']) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(" ${localWeeks[index]['week']} is already closed."),
-          duration: Duration(seconds: 2),
+          content: Text("La ${localWeeks[index]['week']} ya está cerrada."),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
@@ -513,38 +655,34 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
     List<Map<String, dynamic>> incompleteJobs =
         jobs.where((job) => !job['completed']).toList();
 
-    // Check for pending jobs before proceeding
     bool hasPendingJobs = incompleteJobs.isNotEmpty;
 
     if (hasPendingJobs) {
-      // Show dialog to select which jobs to carry over to the next week
       await _showJobSelectionDialog(context, incompleteJobs, index);
     } else {
-      // No pending jobs, just create the next week
       _createNextWeekWithJobs([], index);
     }
   }
 
   Future<void> _showJobSelectionDialog(BuildContext context,
       List<Map<String, dynamic>> jobs, int currentIndex) async {
-    // Creating a new map to track selected jobs
-    Map<String, bool> selectedJobs = {
-      for (var job in jobs) job['name']: job['completed']
-    };
+    Map<String, bool> selectedJobs = {for (var job in jobs) job['name']: false};
 
     await showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: Text('Select Jobs to Carry Over'),
+          title: const Text('Seleccionar trabajos completados'),
           content: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
-              return Container(
+              return SizedBox(
                 width: double.maxFinite,
                 child: ListView(
                   children: jobs.map((job) {
                     return CheckboxListTile(
                       title: Text(job['name']),
+                      subtitle: Text(
+                          'Cuadrilla: ${job['cuadrillaDescription'] ?? 'No asignada'}'),
                       value: selectedJobs[job['name']],
                       onChanged: (bool? value) {
                         setState(() {
@@ -559,17 +697,33 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
           ),
           actions: [
             TextButton(
-              child: Text('Cancel'),
               onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
             ),
             TextButton(
-              child: Text('Confirm'),
               onPressed: () {
+                List<Map<String, dynamic>> completedJobs =
+                    jobs.where((job) => selectedJobs[job['name']]!).toList();
+
                 List<Map<String, dynamic>> jobsToCarryOver =
-                    jobs.where((job) => !selectedJobs[job['name']]!).toList();
+                    jobs.where((job) => !selectedJobs[job['name']]!).map((job) {
+                  return {
+                    'name': job['name'],
+                    'completed': false,
+                    'cuadrillaId': job['cuadrillaId'],
+                    'cuadrillaDescription': job['cuadrillaDescription'],
+                    'cuadrillaResponsable': job['cuadrillaResponsable']
+                  };
+                }).toList();
+
+                for (var job in completedJobs) {
+                  job['completed'] = true;
+                }
+
                 _createNextWeekWithJobs(jobsToCarryOver, currentIndex);
                 Navigator.of(dialogContext).pop();
               },
+              child: const Text('Confirmar'),
             ),
           ],
         );
@@ -579,8 +733,8 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
 
   void _createNextWeekWithJobs(
       List<Map<String, dynamic>> jobs, int currentIndex) async {
-    // Marca la semana actual como completada
     String currentWeekId = localWeeks[currentIndex]['week'];
+
     await FirebaseFirestore.instance
         .collection('worked_weeks')
         .doc(currentWeekId)
@@ -589,44 +743,33 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
       'jobs': localWeeks[currentIndex]['jobs'].map((job) {
         return {
           'name': job['name'],
-          // Marcar como completado si no se transfiere a la siguiente semana
-          'completed': !jobs.contains(job)
+          'completed': job['completed'],
+          'cuadrillaId': job['cuadrillaId'],
+          'cuadrillaDescription': job['cuadrillaDescription'],
+          'cuadrillaResponsable': job['cuadrillaResponsable']
         };
       }).toList(),
     });
 
-    // Prepara la nueva semana
-    String newWeekId = 'Week #${localWeeks.length + 1}';
+    String newWeekId = 'Semana #${localWeeks.length + 1}';
     await FirebaseFirestore.instance
         .collection('worked_weeks')
         .doc(newWeekId)
         .set({
       'week': newWeekId,
-      'description': 'New work week',
+      'description': 'Nueva semana laboral',
       'completed': false,
-      'jobs': jobs.map((job) {
-        return {
-          'name': job['name'],
-          'completed':
-              false // Inicializar como no completado para la nueva semana
-        };
-      }).toList(),
+      'jobs': jobs,
     });
 
     setState(() {
       localWeeks[currentIndex]['completed'] = true;
-      localWeeks[currentIndex]['jobs'] =
-          localWeeks[currentIndex]['jobs'].map((job) {
-        return {'name': job['name'], 'completed': !jobs.contains(job)};
-      }).toList();
 
       localWeeks.add({
         'week': newWeekId,
-        'description': 'New work week',
+        'description': 'Nueva semana laboral',
         'completed': false,
-        'jobs': jobs.map((job) {
-          return {'name': job['name'], 'completed': false};
-        }).toList(),
+        'jobs': jobs,
       });
     });
   }
@@ -635,30 +778,46 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Worked Weeks'),
+        title: const Text('Semanas trabajadas'),
       ),
       body: ListView.builder(
         itemCount: localWeeks.length,
         itemBuilder: (context, index) {
+          bool isCompleted = localWeeks[index]['completed'] ?? false;
+
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 8.0),
             child: ListTile(
               title: Text(
                 localWeeks[index]['week'],
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
+                  color: isCompleted ? Colors.grey : Colors.black,
                 ),
               ),
-              subtitle: Text(localWeeks[index]['description']),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(localWeeks[index]['description']),
+                  if (isCompleted)
+                    const Text(
+                      "Semana Cerrada",
+                      style: TextStyle(
+                          color: Colors.red, fontWeight: FontWeight.bold),
+                    ),
+                ],
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.add),
-                    onPressed: () => _addJobToWeek(index),
+                    icon: const Icon(Icons.add),
+                    onPressed: isCompleted ? null : () => _addJobToWeek(index),
+                    color: isCompleted ? Colors.grey : null,
                   ),
                   PopupMenuButton<String>(
+                    enabled: !isCompleted,
                     onSelected: (String? item) {
                       if (item == 'close') {
                         _closeWeek(index);
@@ -670,18 +829,18 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
                       return [
                         const PopupMenuItem<String>(
                           value: 'edit',
-                          child: Text('Edit'),
+                          child: Text('Editar'),
                         ),
                         const PopupMenuItem<String>(
                           value: 'close',
-                          child: Text('Close'),
+                          child: Text('Cerrar'),
                         ),
                       ];
                     },
                   ),
                 ],
               ),
-              onTap: () => _showMenuOptions(context, index),
+              onTap: () => _showJobsDialog(context, index),
             ),
           );
         },
@@ -705,7 +864,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
               ),
               const SizedBox(height: 10),
               ListTile(
-                title: const Text('Check Hours'),
+                title: const Text('Consultar Horarios'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -718,7 +877,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
                 },
               ),
               ListTile(
-                title: const Text('View Jobs'),
+                title: const Text('Ver trabajos'),
                 onTap: () {
                   Navigator.pop(context);
                   _showJobsDialog(context, index);
@@ -727,7 +886,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
               const SizedBox(height: 10),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: const Text('Cancelar'),
               )
             ],
           ),
@@ -780,11 +939,11 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Edit Day ${localDays[index]['day']}'),
+          title: Text('Editar dia ${localDays[index]['day']}'),
           content: TextField(
             controller: controller,
-            decoration:
-                const InputDecoration(hintText: 'Enter new description'),
+            decoration: const InputDecoration(
+                hintText: 'Ingrese una nueva descripción'),
           ),
           actions: [
             TextButton(
@@ -801,7 +960,7 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
                   print("Error al actualizar la descripción: $error");
                 }
               },
-              child: const Text('Save'),
+              child: const Text('Guardar'),
             ),
           ],
         );
@@ -829,7 +988,7 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Worked Days'),
+        title: const Text('Días trabajados'),
       ),
       body: ListView.builder(
         itemCount: localDays.length,
@@ -849,7 +1008,7 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.add),
+                    icon: const Icon(Icons.add),
                     onPressed: () {},
                   ),
                   PopupMenuButton<String>(
@@ -864,11 +1023,11 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
                       return [
                         const PopupMenuItem<String>(
                           value: 'edit',
-                          child: Text('Edit'),
+                          child: Text('Editar'),
                         ),
                         const PopupMenuItem<String>(
                           value: 'close',
-                          child: Text('Close'),
+                          child: Text('Cerrar'),
                         ),
                       ];
                     },
@@ -884,10 +1043,254 @@ class _WorkedDaysPageState extends State<WorkedDaysPage> {
   }
 }
 
+class WorkedCuadrillaPage extends StatefulWidget {
+  const WorkedCuadrillaPage({super.key});
+
+  @override
+  _WorkedCuadrillaPageState createState() => _WorkedCuadrillaPageState();
+}
+
+class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
+  List<Map<String, dynamic>> localCuadrillas = [];
+  final CollectionReference cuadrillasCollection =
+      FirebaseFirestore.instance.collection('worked_cuadrillas');
+  TextEditingController descriptionController = TextEditingController();
+  TextEditingController responsableController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCuadrillasFromFirestore();
+  }
+
+  void _fetchCuadrillasFromFirestore() async {
+    try {
+      QuerySnapshot snapshot = await cuadrillasCollection.get();
+      setState(() {
+        localCuadrillas = snapshot.docs.map((doc) {
+          return {
+            'id': doc.id,
+            'numeroCuadrilla': doc['numeroCuadrilla'],
+            'description': doc['description'],
+            'responsable': doc['responsable'],
+          };
+        }).toList();
+
+        localCuadrillas.sort(
+            (a, b) => a['numeroCuadrilla'].compareTo(b['numeroCuadrilla']));
+      });
+    } catch (error) {
+      print("Error al cargar cuadrillas: $error");
+    }
+  }
+
+  void _addCuadrilla() async {
+    try {
+      int maxNumeroCuadrilla = 0;
+      if (localCuadrillas.isNotEmpty) {
+        maxNumeroCuadrilla = localCuadrillas
+            .map((e) => e['numeroCuadrilla'])
+            .reduce((a, b) => a > b ? a : b);
+      }
+
+      await cuadrillasCollection.add({
+        'numeroCuadrilla': maxNumeroCuadrilla + 1,
+        'description': descriptionController.text,
+        'responsable': responsableController.text,
+      });
+
+      descriptionController.clear();
+      responsableController.clear();
+      _fetchCuadrillasFromFirestore();
+    } catch (error) {
+      print("Error al agregar cuadrilla: $error");
+    }
+  }
+
+  void _deleteCuadrilla(String cuadrillaId) async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Confirmación"),
+          content: const Text(
+              "¿Estás seguro de que deseas eliminar esta cuadrilla?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await cuadrillasCollection.doc(cuadrillaId).delete();
+                  Navigator.of(context).pop();
+                  _fetchCuadrillasFromFirestore();
+                } catch (error) {
+                  print("Error al eliminar cuadrilla: $error");
+                }
+              },
+              child: const Text("Eliminar"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _editCuadrilla(String id, String description, String responsable) async {
+    descriptionController.text = description;
+    responsableController.text = responsable;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Editar Cuadrilla"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(hintText: 'Descripción'),
+              ),
+              TextField(
+                controller: responsableController,
+                decoration: const InputDecoration(hintText: 'Responsable'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await cuadrillasCollection.doc(id).update({
+                    'description': descriptionController.text,
+                    'responsable': responsableController.text,
+                  });
+                  Navigator.of(context).pop();
+                  _fetchCuadrillasFromFirestore();
+                } catch (error) {
+                  print("Error al editar cuadrilla: $error");
+                }
+              },
+              child: const Text("Guardar"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openAddCuadrillaDialog() {
+    descriptionController.clear();
+    responsableController.clear();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Agregar Cuadrilla"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(hintText: 'Descripción'),
+              ),
+              TextField(
+                controller: responsableController,
+                decoration: const InputDecoration(hintText: 'Responsable'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () {
+                _addCuadrilla();
+                Navigator.of(context).pop();
+              },
+              child: const Text("Guardar"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Cuadrillas de Trabajado'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.only(bottom: 80.0),
+        child: ListView.builder(
+          itemCount: localCuadrillas.length,
+          itemBuilder: (context, index) {
+            final cuadrilla = localCuadrillas[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 8.0),
+              child: ListTile(
+                title: Text(
+                  'Cuadrilla #${cuadrilla['numeroCuadrilla']}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                subtitle: Text(
+                  'Descripción: ${cuadrilla['description']}\nResponsable: ${cuadrilla['responsable']}',
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () {
+                        _editCuadrilla(
+                          cuadrilla['id'],
+                          cuadrilla['description'],
+                          cuadrilla['responsable'],
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () {
+                        _deleteCuadrilla(cuadrilla['id']);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+          onPressed: _openAddCuadrillaDialog, child: const Icon(Icons.add)),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+}
+
 class EmployeeHoursPage extends StatefulWidget {
   final String week;
 
-  const EmployeeHoursPage({required this.week});
+  const EmployeeHoursPage({super.key, required this.week});
 
   @override
   _EmployeeHoursPageState createState() => _EmployeeHoursPageState();
