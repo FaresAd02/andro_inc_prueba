@@ -296,16 +296,6 @@ class _AdminPageState extends State<AdminPage> {
               },
             ),
             ListTile(
-              title: const Text('Días laborados'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const WorkedDaysPage()),
-                );
-              },
-            ),
-            ListTile(
               title: const Text('Cuadrillas'),
               onTap: () {
                 Navigator.push(
@@ -419,6 +409,12 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
                 hintText: 'Ingrese una nueva descripción'),
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancelar'),
+            ),
             TextButton(
               onPressed: () async {
                 try {
@@ -892,153 +888,6 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
           ),
         );
       },
-    );
-  }
-}
-
-class WorkedDaysPage extends StatefulWidget {
-  const WorkedDaysPage({super.key});
-
-  @override
-  _WorkedDaysPageState createState() => _WorkedDaysPageState();
-}
-
-class _WorkedDaysPageState extends State<WorkedDaysPage> {
-  List<Map<String, dynamic>> localDays = [];
-  final CollectionReference daysCollection =
-      FirebaseFirestore.instance.collection('worked_days');
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchDaysFromFirestore();
-  }
-
-  void _fetchDaysFromFirestore() async {
-    try {
-      QuerySnapshot snapshot = await daysCollection.get();
-      setState(() {
-        localDays = snapshot.docs.map((doc) {
-          return {
-            'day': doc.id,
-            'description': doc['description'],
-            'completed': doc['completed'],
-          };
-        }).toList();
-      });
-    } catch (error) {
-      print("Error al cargar los dias: $error");
-    }
-  }
-
-  void _editDescription(int index) {
-    TextEditingController controller = TextEditingController();
-    controller.text = localDays[index]['description'];
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Editar dia ${localDays[index]['day']}'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-                hintText: 'Ingrese una nueva descripción'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                try {
-                  await daysCollection.doc(localDays[index]['day']).update({
-                    'description': controller.text,
-                  });
-                  setState(() {
-                    localDays[index]['description'] = controller.text;
-                  });
-                  Navigator.of(context).pop();
-                } catch (error) {
-                  print("Error al actualizar la descripción: $error");
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _closeDay(int index) async {
-    try {
-      await daysCollection.doc(localDays[index]['day']).update({
-        'completed': true,
-      });
-
-      setState(() {
-        localDays[index]['completed'] = true;
-      });
-
-      print("Dia cerrado");
-    } catch (error) {
-      print("Error al cerrar el dia: $error");
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Días trabajados'),
-      ),
-      body: ListView.builder(
-        itemCount: localDays.length,
-        itemBuilder: (context, index) {
-          return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
-            child: ListTile(
-              title: Text(
-                localDays[index]['day'],
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              subtitle: Text(localDays[index]['description']),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {},
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (String item) {
-                      if (item == 'close') {
-                        _closeDay(index);
-                      } else if (item == 'edit') {
-                        _editDescription(index);
-                      }
-                    },
-                    itemBuilder: (BuildContext context) {
-                      return [
-                        const PopupMenuItem<String>(
-                          value: 'edit',
-                          child: Text('Editar'),
-                        ),
-                        const PopupMenuItem<String>(
-                          value: 'close',
-                          child: Text('Cerrar'),
-                        ),
-                      ];
-                    },
-                  ),
-                ],
-              ),
-              onTap: () {},
-            ),
-          );
-        },
-      ),
     );
   }
 }
