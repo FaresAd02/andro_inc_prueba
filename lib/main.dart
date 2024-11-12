@@ -100,6 +100,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
   String _errorMessage = '';
 
   Future<void> _login() async {
@@ -115,42 +116,26 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text.trim(),
       );
 
-      print("Usuario autenticado, UID: ${userCredential.user!.uid}");
-
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userCredential.user!.uid)
           .get();
 
       if (userDoc.exists) {
-        print("Documento del usuario encontrado en Firestore");
-
         String rol = userDoc['rol'];
-        print("Rol del usuario: $rol");
-
         if (rol == 'admin') {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const AdminPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const AdminPage()),
           );
         } else if (rol == 'user') {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const UserHoursPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const UserHoursPage()),
           );
-        } else {
-          setState(() {
-            _errorMessage = 'Rol no reconocido.';
-          });
-          print("Error: Rol no reconocido.");
         }
       } else {
         setState(() {
-          _errorMessage = 'El documento del usuario no existe en Firestore.';
+          _errorMessage = 'Documento del usuario no encontrado.';
         });
-        print("Error: El documento del usuario no existe en Firestore.");
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -162,15 +147,33 @@ class _LoginPageState extends State<LoginPage> {
           _errorMessage = 'Error: ${e.message}';
         }
       });
-      print("Error de autenticación: ${e.message}");
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error obteniendo datos del usuario: $e';
-      });
-      print("Error obteniendo datos del usuario: $e");
     } finally {
       setState(() {
         _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    String email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _errorMessage = 'Por favor, ingrese su correo electrónico.';
+      });
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Se ha enviado un enlace para restablecer tu contraseña.'),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al enviar el correo de restablecimiento: $e';
       });
     }
   }
@@ -187,6 +190,7 @@ class _LoginPageState extends State<LoginPage> {
               'assets/logo.png',
               height: 120,
             ),
+            const SizedBox(height: 20),
             const Text(
               '¡Bienvenido a ArchiTask!',
               style: TextStyle(
@@ -195,16 +199,32 @@ class _LoginPageState extends State<LoginPage> {
                 color: Colors.blueAccent,
               ),
             ),
-            const SizedBox(height: 80),
+            const SizedBox(height: 40),
             TextField(
               controller: _emailController,
               decoration:
                   const InputDecoration(labelText: 'Correo electrónico'),
             ),
+            const SizedBox(height: 20),
             TextField(
               controller: _passwordController,
-              decoration: const InputDecoration(labelText: 'Contraseña'),
-              obscureText: true,
+              obscureText:
+                  !_isPasswordVisible, // Controla la visibilidad de la contraseña
+              decoration: InputDecoration(
+                labelText: 'Contraseña',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _isPasswordVisible
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isPasswordVisible = !_isPasswordVisible;
+                    });
+                  },
+                ),
+              ),
             ),
             const SizedBox(height: 20),
             if (_errorMessage.isNotEmpty)
@@ -219,6 +239,16 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: _login,
                     child: const Text('Iniciar sesión'),
                   ),
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () async {
+                await _resetPassword();
+              },
+              child: const Text(
+                '¿Olvidaste tu contraseña?',
+                style: TextStyle(color: Colors.blue),
+              ),
+            ),
           ],
         ),
       ),
@@ -230,6 +260,73 @@ class _LoginPageState extends State<LoginPage> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+}
+
+class menuCustom extends StatelessWidget {
+  const menuCustom({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const DrawerHeader(
+            decoration: BoxDecoration(
+              color: Colors.blue,
+            ),
+            child: Text(
+              'Menu ArchiTask',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.home),
+            title: const Text('Inicio'),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminPage()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_today),
+            title: const Text('Semanas trabajadas'),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const WorkedWeeksPage()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.group),
+            title: const Text('Cuadrillas'),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const WorkedCuadrillaPage()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Cerrar sesión'),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -287,47 +384,64 @@ class _AdminPageState extends State<AdminPage> {
       appBar: AppBar(
         title: Text('Hola $nombre'),
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-              child: Text('Menu'),
+            Image.asset(
+              'assets/logo.png',
+              height: 120,
             ),
-            ListTile(
-              title: const Text('Semanas trabajadas'),
-              onTap: () {
+            const Text(
+              'ARCHITASK',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 80),
+            ElevatedButton.icon(
+              onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) => const WorkedWeeksPage()),
                 );
               },
+              icon: const Icon(Icons.calendar_today),
+              label: const Text('Semanas trabajadas'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+              ),
             ),
-            ListTile(
-              title: const Text('Cuadrillas'),
-              onTap: () {
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) => const WorkedCuadrillaPage()),
                 );
               },
+              icon: const Icon(Icons.group),
+              label: const Text('Cuadrillas'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+              ),
             ),
-            ListTile(
-              title: const Text('Cerrar sesión'),
-              onTap: () {
-                _logout(context);
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await _logout(context);
               },
+              icon: const Icon(Icons.logout),
+              label: const Text('Cerrar sesión'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+              ),
             ),
           ],
         ),
-      ),
-      body: const Center(
-        child: Text('Bienvenido a la administración'),
       ),
     );
   }
@@ -786,8 +900,16 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Semanas trabajadas'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer(); // Aquí funciona correctamente
+            },
+          ),
+        ),
       ),
+      drawer: const menuCustom(),
       body: ListView.builder(
         itemCount: localWeeks.length,
         itemBuilder: (context, index) {
@@ -1095,7 +1217,16 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cuadrillas de Trabajado'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer(); // Aquí funciona correctamente
+            },
+          ),
+        ),
       ),
+      drawer: const menuCustom(),
       body: Padding(
         padding: const EdgeInsets.only(bottom: 80.0),
         child: ListView.builder(
