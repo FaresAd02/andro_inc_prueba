@@ -124,12 +124,14 @@ class _LoginPageState extends State<LoginPage> {
       if (userDoc.exists) {
         String rol = userDoc['rol'];
         if (rol == 'admin') {
-          Navigator.of(context).pushReplacement(
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const AdminPage()),
+            (Route<dynamic> route) => false,
           );
         } else if (rol == 'user') {
-          Navigator.of(context).pushReplacement(
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const UserHoursPage()),
+            (Route<dynamic> route) => false,
           );
         }
       } else {
@@ -285,9 +287,9 @@ class menuCustom extends StatelessWidget {
             leading: const Icon(Icons.home),
             title: const Text('Inicio'),
             onTap: () {
-              Navigator.pushReplacement(
-                context,
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const AdminPage()),
+                (Route<dynamic> route) => false,
               );
             },
           ),
@@ -295,10 +297,21 @@ class menuCustom extends StatelessWidget {
             leading: const Icon(Icons.calendar_today),
             title: const Text('Semanas trabajadas'),
             onTap: () {
-              Navigator.pushReplacement(
-                context,
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
                     builder: (context) => const WorkedWeeksPage()),
+                (Route<dynamic> route) => false,
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Creacion de Usuarios'),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const UserPage()),
+                (Route<dynamic> route) => false,
               );
             },
           ),
@@ -306,10 +319,10 @@ class menuCustom extends StatelessWidget {
             leading: const Icon(Icons.group),
             title: const Text('Cuadrillas'),
             onTap: () {
-              Navigator.pushReplacement(
-                context,
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
                     builder: (context) => const WorkedCuadrillaPage()),
+                (Route<dynamic> route) => false,
               );
             },
           ),
@@ -318,9 +331,9 @@ class menuCustom extends StatelessWidget {
             title: const Text('Cerrar sesión'),
             onTap: () async {
               await FirebaseAuth.instance.signOut();
-              Navigator.pushReplacement(
-                context,
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const LoginPage()),
+                (Route<dynamic> route) => false,
               );
             },
           ),
@@ -371,76 +384,95 @@ class _AdminPageState extends State<AdminPage> {
 
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => LoginPage(),
-      ),
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const LoginPage()),
+      (Route<dynamic> route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Hola $nombre'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              'assets/logo.png',
-              height: 120,
-            ),
-            const Text(
-              'ARCHITASK',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+    return WillPopScope(
+      onWillPop: () async {
+        // Impide regresar a la pantalla anterior
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Hola $nombre'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/logo.png',
+                height: 120,
               ),
-            ),
-            const SizedBox(height: 80),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const WorkedWeeksPage()),
-                );
-              },
-              icon: const Icon(Icons.calendar_today),
-              label: const Text('Semanas trabajadas'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 50),
+              const Text(
+                'ARCHITASK',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const WorkedCuadrillaPage()),
-                );
-              },
-              icon: const Icon(Icons.group),
-              label: const Text('Cuadrillas'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 50),
+              const SizedBox(height: 80),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                        builder: (context) => const WorkedWeeksPage()),
+                    (Route<dynamic> route) => false,
+                  );
+                },
+                icon: const Icon(Icons.calendar_today),
+                label: const Text('Semanas trabajadas'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 50),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () async {
-                await _logout(context);
-              },
-              icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesión'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 50),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const UserPage()),
+                    (Route<dynamic> route) => false,
+                  );
+                },
+                icon: const Icon(Icons.person),
+                label: const Text('Creacion de Usuarios'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 50),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                        builder: (context) => const WorkedCuadrillaPage()),
+                    (Route<dynamic> route) => false,
+                  );
+                },
+                icon: const Icon(Icons.group),
+                label: const Text('Cuadrillas'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 50),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  await _logout(context);
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Cerrar sesión'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 50),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -904,7 +936,7 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () {
-              Scaffold.of(context).openDrawer(); // Aquí funciona correctamente
+              Scaffold.of(context).openDrawer();
             },
           ),
         ),
@@ -977,53 +1009,6 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
       ),
     );
   }
-
-  void _showMenuOptions(BuildContext context, int index) {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Week ${localWeeks[index]['week']}',
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              ListTile(
-                title: const Text('Consultar Horarios'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          EmployeeHoursPage(week: localWeeks[index]['week']),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                title: const Text('Ver trabajos'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showJobsDialog(context, index);
-                },
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              )
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
 class WorkedCuadrillaPage extends StatefulWidget {
@@ -1035,15 +1020,19 @@ class WorkedCuadrillaPage extends StatefulWidget {
 
 class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
   List<Map<String, dynamic>> localCuadrillas = [];
+  List<String> responsables = [];
+  String? selectedResponsable;
   final CollectionReference cuadrillasCollection =
       FirebaseFirestore.instance.collection('worked_cuadrillas');
+  final CollectionReference usersCollection =
+      FirebaseFirestore.instance.collection('users');
   TextEditingController descriptionController = TextEditingController();
-  TextEditingController responsableController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetchCuadrillasFromFirestore();
+    _fetchResponsablesFromFirestore();
   }
 
   void _fetchCuadrillasFromFirestore() async {
@@ -1067,6 +1056,19 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
     }
   }
 
+  void _fetchResponsablesFromFirestore() async {
+    try {
+      QuerySnapshot snapshot =
+          await usersCollection.where('rol', isEqualTo: 'user').get();
+      setState(() {
+        responsables =
+            snapshot.docs.map((doc) => doc['name'] as String).toList();
+      });
+    } catch (error) {
+      print("Error al cargar responsables: $error");
+    }
+  }
+
   void _addCuadrilla() async {
     try {
       int maxNumeroCuadrilla = 0;
@@ -1079,51 +1081,21 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
       await cuadrillasCollection.add({
         'numeroCuadrilla': maxNumeroCuadrilla + 1,
         'description': descriptionController.text,
-        'responsable': responsableController.text,
+        'responsable': selectedResponsable,
       });
 
       descriptionController.clear();
-      responsableController.clear();
+      selectedResponsable = null;
       _fetchCuadrillasFromFirestore();
     } catch (error) {
       print("Error al agregar cuadrilla: $error");
     }
   }
 
-  void _deleteCuadrilla(String cuadrillaId) async {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Confirmación"),
-          content: const Text(
-              "¿Estás seguro de que deseas eliminar esta cuadrilla?"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("Cancelar"),
-            ),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await cuadrillasCollection.doc(cuadrillaId).delete();
-                  Navigator.of(context).pop();
-                  _fetchCuadrillasFromFirestore();
-                } catch (error) {
-                  print("Error al eliminar cuadrilla: $error");
-                }
-              },
-              child: const Text("Eliminar"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _editCuadrilla(String id, String description, String responsable) async {
-    descriptionController.text = description;
-    responsableController.text = responsable;
+  void _editCuadrilla(
+      String id, String currentDescription, String currentResponsable) {
+    descriptionController.text = currentDescription;
+    selectedResponsable = currentResponsable;
 
     showDialog(
       context: context,
@@ -1137,9 +1109,23 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
                 controller: descriptionController,
                 decoration: const InputDecoration(hintText: 'Descripción'),
               ),
-              TextField(
-                controller: responsableController,
-                decoration: const InputDecoration(hintText: 'Responsable'),
+              const SizedBox(height: 16.0),
+              DropdownButtonFormField<String>(
+                value: selectedResponsable,
+                items: responsables.map((String responsable) {
+                  return DropdownMenuItem<String>(
+                    value: responsable,
+                    child: Text(responsable),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedResponsable = value;
+                  });
+                },
+                decoration: const InputDecoration(
+                  hintText: 'Seleccionar Responsable',
+                ),
               ),
             ],
           ),
@@ -1155,12 +1141,12 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
                 try {
                   await cuadrillasCollection.doc(id).update({
                     'description': descriptionController.text,
-                    'responsable': responsableController.text,
+                    'responsable': selectedResponsable,
                   });
-                  Navigator.of(context).pop();
                   _fetchCuadrillasFromFirestore();
+                  Navigator.of(context).pop();
                 } catch (error) {
-                  print("Error al editar cuadrilla: $error");
+                  print("Error al actualizar cuadrilla: $error");
                 }
               },
               child: const Text("Guardar"),
@@ -1171,9 +1157,42 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
     );
   }
 
+  void _deleteCuadrilla(String id) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Eliminar Cuadrilla"),
+          content: const Text(
+              "¿Estás seguro de que deseas eliminar esta cuadrilla?"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await cuadrillasCollection.doc(id).delete();
+                  _fetchCuadrillasFromFirestore();
+                  Navigator.of(context).pop();
+                } catch (error) {
+                  print("Error al eliminar cuadrilla: $error");
+                }
+              },
+              child: const Text("Eliminar"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _openAddCuadrillaDialog() {
     descriptionController.clear();
-    responsableController.clear();
+    selectedResponsable = null;
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1186,9 +1205,23 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
                 controller: descriptionController,
                 decoration: const InputDecoration(hintText: 'Descripción'),
               ),
-              TextField(
-                controller: responsableController,
-                decoration: const InputDecoration(hintText: 'Responsable'),
+              const SizedBox(height: 16.0),
+              DropdownButtonFormField<String>(
+                value: selectedResponsable,
+                items: responsables.map((String responsable) {
+                  return DropdownMenuItem<String>(
+                    value: responsable,
+                    child: Text(responsable),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedResponsable = value;
+                  });
+                },
+                decoration: const InputDecoration(
+                  hintText: 'Seleccionar Responsable',
+                ),
               ),
             ],
           ),
@@ -1221,7 +1254,7 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () {
-              Scaffold.of(context).openDrawer(); // Aquí funciona correctamente
+              Scaffold.of(context).openDrawer();
             },
           ),
         ),
@@ -1273,109 +1306,375 @@ class _WorkedCuadrillaPageState extends State<WorkedCuadrillaPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-          onPressed: _openAddCuadrillaDialog, child: const Icon(Icons.add)),
+        onPressed: _openAddCuadrillaDialog,
+        child: const Icon(Icons.add),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
 
-class EmployeeHoursPage extends StatefulWidget {
-  final String week;
-
-  const EmployeeHoursPage({super.key, required this.week});
-
-  @override
-  _EmployeeHoursPageState createState() => _EmployeeHoursPageState();
-}
-
-class _EmployeeHoursPageState extends State<EmployeeHoursPage> {
-  final CollectionReference employeeHoursCollection =
-      FirebaseFirestore.instance.collection('employee_hours');
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Horas de la semana ${widget.week}'),
-        leading: BackButton(onPressed: () {
-          Navigator.pop(context);
-        }),
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: employeeHoursCollection
-            .where('week', isEqualTo: widget.week)
-            .snapshots(),
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (snapshot.hasError) {
-            return const Text('Error al cargar los datos.');
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const CircularProgressIndicator();
-          }
-
-          final List<DocumentSnapshot> employees = snapshot.data!.docs;
-
-          return ListView.builder(
-            itemCount: employees.length,
-            itemBuilder: (context, index) {
-              Map<String, dynamic> employee =
-                  employees[index].data()! as Map<String, dynamic>;
-              return Dismissible(
-                key: Key(employee['name']),
-                direction: DismissDirection.endToStart,
-                onDismissed: (direction) {
-                  employeeHoursCollection.doc(employees[index].id).delete();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${employee['name']} removed'),
-                    ),
-                  );
-                },
-                background: Container(
-                  color: Colors.red,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: const Icon(Icons.delete, color: Colors.white),
-                ),
-                child: ListTile(
-                  title: Text(employee['name']),
-                  subtitle: Text('${employee['hours']} hours'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.check, color: Colors.green),
-                        onPressed: () {},
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
-                        onPressed: () {},
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class UserPage extends StatelessWidget {
+class UserPage extends StatefulWidget {
   const UserPage({super.key});
 
   @override
+  _UserPageState createState() => _UserPageState();
+}
+
+class _UserPageState extends State<UserPage> {
+// Controladores para los campos del formulario de creación
+  final TextEditingController _createNameController = TextEditingController();
+  final TextEditingController _createEmailController = TextEditingController();
+  final TextEditingController _createPasswordController =
+      TextEditingController();
+  String _createSelectedRole = 'Seleccione';
+
+  // Controladores para los campos del diálogo de edición
+  final TextEditingController _editNameController = TextEditingController();
+  final TextEditingController _editEmailController = TextEditingController();
+  String _editSelectedRole = 'Seleccione';
+
+  // Listado local de usuarios
+  List<Map<String, dynamic>> users = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsersFromFirestore();
+  }
+
+  // Método para cargar usuarios desde Firestore
+  void _fetchUsersFromFirestore() async {
+    try {
+      QuerySnapshot snapshot =
+          await FirebaseFirestore.instance.collection('users').get();
+      setState(() {
+        users = snapshot.docs.map((doc) {
+          return {
+            'id': doc.id,
+            'name': doc['name'],
+            'email': doc['email'],
+            'rol': doc['rol'],
+          };
+        }).toList();
+      });
+    } catch (error) {
+      print("Error al cargar usuarios: $error");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error al cargar usuarios: $error")),
+      );
+    }
+  }
+
+  void _createUser() async {
+    String name = _createNameController.text;
+    String email = _createEmailController.text;
+    String password = _createPasswordController.text;
+    String role = _createSelectedRole;
+
+    if (name.isNotEmpty &&
+        email.isNotEmpty &&
+        password.isNotEmpty &&
+        role != 'Seleccione') {
+      try {
+        UserCredential userCredential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        String userId = userCredential.user!.uid;
+
+        await FirebaseFirestore.instance.collection('users').doc(userId).set({
+          'name': name,
+          'email': email,
+          'rol': role,
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Usuario $name creado como $role con éxito')),
+        );
+
+        _createNameController.clear();
+        _createEmailController.clear();
+        _createPasswordController.clear();
+        setState(() {
+          _createSelectedRole = 'Seleccione';
+        });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al crear el usuario: $e')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Por favor, completa todos los campos')),
+      );
+    }
+  }
+
+  // Función para editar un usuario
+  void _editUser(String userId, String name, String email, String role) {
+    // Asignar valores a los controladores y la variable local de rol
+    _editNameController.text = name;
+    _editEmailController.text = email;
+    _editSelectedRole = role;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Editar Usuario'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _editNameController,
+                    decoration: InputDecoration(labelText: 'Nombre'),
+                  ),
+                  TextField(
+                    controller: _editEmailController,
+                    decoration:
+                        InputDecoration(labelText: 'Correo electrónico'),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  DropdownButton<String>(
+                    value: _editSelectedRole,
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        _editSelectedRole = newValue!;
+                      });
+                    },
+                    items: <String>['Seleccione', 'user', 'admin']
+                        .map<DropdownMenuItem<String>>((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(userId)
+                          .update({
+                        'name': _editNameController.text,
+                        'email': _editEmailController.text,
+                        'rol': _editSelectedRole,
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Usuario actualizado con éxito')),
+                      );
+                      Navigator.of(context).pop();
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text('Error al actualizar el usuario: $e')),
+                      );
+                    }
+                  },
+                  child: Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Método para eliminar un usuario
+  void _deleteUser(String userId) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).delete();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Usuario eliminado con éxito')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar el usuario: $e')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Usuario'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
+        ),
       ),
-      body: const Center(
-        child: Text('Estás en usuario'),
+      drawer: const menuCustom(),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Campos de creación de usuario
+            TextField(
+              controller: _createNameController,
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 10),
+            TextField(
+              controller: _createEmailController,
+              decoration: InputDecoration(
+                labelText: 'Correo electrónico',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            SizedBox(height: 10),
+            TextField(
+              controller: _createPasswordController,
+              decoration: InputDecoration(
+                labelText: 'Contraseña',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              value: _createSelectedRole,
+              decoration: InputDecoration(
+                labelText: 'Rol',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _createSelectedRole = newValue!;
+                });
+              },
+              items: <String>['Seleccione', 'user', 'admin']
+                  .map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+            ),
+            SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _createUser,
+              child: Center(
+                // Asegura que el texto esté centrado
+                child: Text(
+                  'Crear Usuario',
+                  textAlign: TextAlign
+                      .center, // Opcional, para asegurarte de que el texto esté centrado
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 16), // Ajusta el padding
+              ),
+            ),
+
+            SizedBox(height: 20),
+            // Lista de usuarios
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream:
+                    FirebaseFirestore.instance.collection('users').snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+
+                  final users = snapshot.data!.docs;
+
+                  return ListView.builder(
+                    itemCount: users.length,
+                    itemBuilder: (context, index) {
+                      final user = users[index];
+                      return Card(
+                        margin: EdgeInsets.symmetric(vertical: 8),
+                        elevation: 3,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.blueAccent,
+                            child: Text(
+                              user['name'][0],
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          title: Text(
+                            user['name'],
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            'Email: ${user['email']} \nRol: ${user['rol']}',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600]),
+                          ),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon:
+                                    Icon(Icons.edit, color: Colors.blueAccent),
+                                onPressed: () => _editUser(
+                                  user.id,
+                                  user['name'],
+                                  user['email'],
+                                  user['rol'],
+                                ),
+                              ),
+                              IconButton(
+                                icon:
+                                    Icon(Icons.delete, color: Colors.redAccent),
+                                onPressed: () => _deleteUser(user.id),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _createNameController.dispose();
+    _createEmailController.dispose();
+    _createPasswordController.dispose();
+    _editNameController.dispose();
+    _editEmailController.dispose();
+    super.dispose();
   }
 }
