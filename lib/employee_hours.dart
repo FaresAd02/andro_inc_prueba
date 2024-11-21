@@ -3,6 +3,66 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart';
 
+final CollectionReference weeksCollection =
+    FirebaseFirestore.instance.collection('worked_weeks');
+
+class menuCustomEmployee extends StatelessWidget {
+  const menuCustomEmployee({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const DrawerHeader(
+            decoration: BoxDecoration(
+              color: Colors.blue,
+            ),
+            child: Text(
+              'Menu ArchiTask',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_today),
+            title: const Text('Semanas trabajadas'),
+            onTap: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                    builder: (context) => const EmployeeHoursScreen()),
+                (Route<dynamic> route) => false,
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Dias de Trabajo'),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const UserHoursPage()),
+                (Route<dynamic> route) => false,
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Cerrar sesión'),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+                (Route<dynamic> route) => false,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class UserHoursPage extends StatefulWidget {
   const UserHoursPage({super.key});
 
@@ -11,20 +71,32 @@ class UserHoursPage extends StatefulWidget {
 }
 
 class _UserHoursPageState extends State<UserHoursPage> {
-  Map<String, int> workedHours = {
-    "Monday": 0,
-    "Tuesday": 0,
-    "Wednesday": 0,
-    "Thursday": 0,
-    "Friday": 0,
-    "Saturday": 0
+  Map<String, bool> closedDays = {
+    "Lunes": false,
+    "Martes": false,
+    "Miercoles": false,
+    "Jueves": false,
+    "Viernes": false,
+    "Sabado": false,
   };
+
   String? nombre = "Usuario";
+  String? currentWeek;
 
   @override
   void initState() {
     super.initState();
     _getUserName();
+    fetchLatestWeek().then((week) {
+      if (week != null) {
+        setState(() {
+          currentWeek = week;
+        });
+        _fetchClosedDays(); // Ahora se ejecuta después de asignar currentWeek
+      } else {
+        print("No se encontró ninguna semana en Firestore.");
+      }
+    });
   }
 
   Future<void> _getUserName() async {
@@ -46,118 +118,522 @@ class _UserHoursPageState extends State<UserHoursPage> {
     }
   }
 
-  void increment(String day) {
-    setState(() {
-      workedHours[day] = workedHours[day]! + 1;
-    });
-  }
+  Future<void> _fetchClosedDays() async {
+    try {
+      if (currentWeek == null) {
+        print(
+            "Semana actual no definida. Asegúrate de haber cargado las semanas correctamente.");
+        return;
+      }
 
-  void decrement(String day) {
-    if (workedHours[day]! > 0) {
-      setState(() {
-        workedHours[day] = workedHours[day]! - 1;
-      });
+      // Lógica actual del método
+      DocumentSnapshot weekSnapshot = await FirebaseFirestore.instance
+          .collection('worked_days')
+          .doc(currentWeek)
+          .get();
+
+      if (weekSnapshot.exists) {
+        Map<String, dynamic> weekData =
+            weekSnapshot.data() as Map<String, dynamic>;
+
+        Map<String, bool> tempClosedDays = {
+          "Lunes": false,
+          "Martes": false,
+          "Miercoles": false,
+          "Jueves": false,
+          "Viernes": false,
+          "Sabado": false,
+        };
+
+        if (weekData['days'] != null) {
+          Map<String, dynamic> daysData =
+              weekData['days'] as Map<String, dynamic>;
+
+          daysData.forEach((day, details) {
+            if (details is Map<String, dynamic> &&
+                details.containsKey('cerrado')) {
+              tempClosedDays[day] = details['cerrado'] ?? false;
+            }
+          });
+        }
+
+        setState(() {
+          closedDays = tempClosedDays;
+        });
+      } else {
+        print("Documento de la semana actual no encontrado en Firestore.");
+      }
+    } catch (e) {
+      print("Error obteniendo los días cerrados: $e");
     }
   }
 
-  void _submitHours() async {
-    int totalHours = workedHours.values.reduce((a, b) => a + b);
-    User? user = FirebaseAuth.instance.currentUser;
+  Future<String?> fetchLatestWeek() async {
+    try {
+      QuerySnapshot snapshot = await weeksCollection.get();
+      List<Map<String, dynamic>> weeks = snapshot.docs.map((doc) {
+        return {
+          'week': doc.id,
+        };
+      }).toList();
 
-    if (user != null) {
-      try {
-        await FirebaseFirestore.instance.collection('employee_hours').add({
-          'hours': totalHours,
-          'name': nombre,
-          'week': 35,
-        });
+      weeks.sort((a, b) {
+        int weekA =
+            int.tryParse(a['week'].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        int weekB =
+            int.tryParse(b['week'].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        return weekA.compareTo(weekB);
+      });
+
+      if (weeks.isNotEmpty) {
+        return weeks.last['week'];
+      }
+    } catch (e) {
+      print("Error obteniendo la semana actual: $e");
+    }
+    return null;
+  }
+
+  Stream<String?> getLatestWeekStream() {
+    return FirebaseFirestore.instance
+        .collection('worked_weeks')
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null);
+  }
+
+  void _closeDay(String dia) async {
+    try {
+      if (closedDays[dia] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Horas enviadas correctamente")));
-      } catch (e) {
-        print("Error al enviar las horas: $e");
+          SnackBar(content: Text("El día $dia ya está cerrado.")),
+        );
+        return;
+      }
+
+      if (currentWeek == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Semana actual no definida. Intenta nuevamente.")),
+        );
+        return;
+      }
+
+      DocumentSnapshot weekSnapshot = await FirebaseFirestore.instance
+          .collection('employee_hours')
+          .doc(currentWeek)
+          .get();
+
+      if (weekSnapshot.exists) {
+        Map<String, dynamic> weekData =
+            weekSnapshot.data() as Map<String, dynamic>;
+
+        if (weekData['days'] != null && weekData['days'][dia] != null) {
+          int employeeCount = (weekData['days'][dia] as Map).length;
+
+          if (employeeCount < 8) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      "Debe haber al menos 8 empleados registrados para cerrar el día.")),
+            );
+            return;
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    "No hay empleados registrados para cerrar el día $dia.")),
+          );
+          return;
+        }
+
+        DocumentReference weekDocRef = FirebaseFirestore.instance
+            .collection('worked_days')
+            .doc(currentWeek);
+
+        await weekDocRef.update({
+          'days.$dia': {
+            'cerrado': true,
+            'cerradoPor': nombre,
+            'horaCierre': TimeOfDay.now().format(context),
+          },
+        });
+
+        setState(() {
+          closedDays[dia] = true;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Día $dia cerrado exitosamente.")),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Datos de la semana actual no encontrados.")),
+        );
+      }
+    } catch (e) {
+      print("Error cerrando el día $dia: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error cerrando el día $dia.")),
+      );
+    }
+  }
+
+  void _showEmployees(String day) async {
+    List<Map<String, dynamic>> employees = await _fetchEmployees(day);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Empleados para $day'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: employees.length,
+              itemBuilder: (context, index) {
+                final employee = employees[index];
+                return ListTile(
+                  title: Text(employee['nombre']),
+                  subtitle: Text(
+                      "Entrada: ${employee['entrada']} - Salida: ${employee['salida']}"),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+            if (!(closedDays[day] ?? false))
+              TextButton(
+                onPressed: () => _addEmployeePopup(context, day),
+                child: const Text('Agregar empleado'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchEmployees(String day) async {
+    try {
+      if (currentWeek == null) {
+        print("Semana actual no definida.");
+        return [];
+      }
+
+      DocumentSnapshot weekSnapshot = await FirebaseFirestore.instance
+          .collection('employee_hours')
+          .doc(currentWeek)
+          .get();
+
+      if (weekSnapshot.exists) {
+        Map<String, dynamic> weekData =
+            weekSnapshot.data() as Map<String, dynamic>;
+
+        if (weekData['days'] != null && weekData['days'][day] != null) {
+          Map<String, dynamic> employees =
+              weekData['days'][day] as Map<String, dynamic>;
+
+          return employees.entries.map((entry) {
+            Map<String, dynamic> employeeData =
+                entry.value as Map<String, dynamic>;
+            return {
+              'nombre': entry.key,
+              'entrada': employeeData['entrada'] ?? 'No especificada',
+              'salida': employeeData['salida'] ?? 'No especificada',
+            };
+          }).toList();
+        }
+      }
+
+      return [];
+    } catch (e) {
+      print("Error obteniendo empleados para $day: $e");
+      return [];
+    }
+  }
+
+  void _addEmployeePopup(BuildContext context, String day) {
+    TextEditingController nombreController = TextEditingController();
+    TimeOfDay? horaEntrada;
+    TimeOfDay? horaSalida;
+
+    void _selectEntryTime(
+        BuildContext context, Function(TimeOfDay) onTimeSelected) async {
+      final TimeOfDay? picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+        initialEntryMode:
+            TimePickerEntryMode.input, // Modo de entrada de texto por defecto
+      );
+      if (picked != null) {
+        onTimeSelected(picked);
       }
     }
+
+    void _selectExitTime(
+        BuildContext context, Function(TimeOfDay) onTimeSelected) async {
+      final TimeOfDay? picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+        initialEntryMode:
+            TimePickerEntryMode.input, // Modo de entrada de texto por defecto
+      );
+      if (picked != null) {
+        onTimeSelected(picked);
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text("Agregar empleado"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nombreController,
+                    decoration: const InputDecoration(labelText: "Nombre"),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    title: const Text("Hora de entrada"),
+                    subtitle: Text(
+                      horaEntrada != null
+                          ? horaEntrada!.format(context)
+                          : "Selecciona una hora",
+                    ),
+                    trailing: const Icon(Icons.access_time),
+                    onTap: () {
+                      _selectEntryTime(context, (selectedTime) {
+                        setState(() {
+                          horaEntrada = selectedTime;
+                        });
+                      });
+                    },
+                  ),
+                  ListTile(
+                    title: const Text("Hora de salida"),
+                    subtitle: Text(
+                      horaSalida != null
+                          ? horaSalida!.format(context)
+                          : "Selecciona una hora",
+                    ),
+                    trailing: const Icon(Icons.access_time),
+                    onTap: () {
+                      _selectEntryTime(context, (selectedTime) {
+                        setState(() {
+                          horaSalida = selectedTime;
+                        });
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    if (nombreController.text.isNotEmpty &&
+                        horaEntrada != null &&
+                        horaSalida != null) {
+                      try {
+                        DocumentReference weekDocRef = FirebaseFirestore
+                            .instance
+                            .collection('employee_hours')
+                            .doc(currentWeek);
+
+                        DocumentSnapshot weekSnapshot = await weekDocRef.get();
+
+                        if (weekSnapshot.exists) {
+                          await weekDocRef.update({
+                            'days.$day.${nombreController.text}': {
+                              'entrada': horaEntrada!.format(context),
+                              'salida': horaSalida!.format(context),
+                            },
+                          });
+                        } else {
+                          await weekDocRef.set({
+                            'week': currentWeek,
+                            'days': {
+                              day: {
+                                nombreController.text: {
+                                  'entrada': horaEntrada!.format(context),
+                                  'salida': horaSalida!.format(context),
+                                },
+                              },
+                            },
+                          });
+                        }
+
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                "Empleado agregado exitosamente: ${nombreController.text}"),
+                          ),
+                        );
+                        _fetchEmployees(day);
+                      } catch (e) {
+                        print("Error agregando empleado: $e");
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                "Error al agregar el empleado: ${e.toString()}"),
+                          ),
+                        );
+                      }
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                "Por favor, completa todos los campos antes de guardar.")),
+                      );
+                    }
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
-  Future<void> _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-      (Route<dynamic> route) => false,
-    );
+  void _closeWeekAndResetDays() async {
+    try {
+      if (closedDays.values.any((isClosed) => !isClosed)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  "No puedes cerrar la semana. Asegúrate de cerrar todos los días primero.")),
+        );
+        return;
+      }
+
+      DocumentReference weekDocRef =
+          FirebaseFirestore.instance.collection('worked_days').doc(currentWeek);
+
+      await weekDocRef.update({'closed': true});
+
+      String newWeekId =
+          'Semana #${int.parse(currentWeek!.split('#').last) + 1}';
+      await FirebaseFirestore.instance
+          .collection('worked_days')
+          .doc(newWeekId)
+          .set({
+        'week': newWeekId,
+        'days': {
+          "Lunes": {'cerrado': false},
+          "Martes": {'cerrado': false},
+          "Miercoles": {'cerrado': false},
+          "Jueves": {'cerrado': false},
+          "Viernes": {'cerrado': false},
+          "Sabado": {'cerrado': false},
+        },
+      });
+
+      setState(() {
+        closedDays = {
+          "Lunes": false,
+          "Martes": false,
+          "Miercoles": false,
+          "Jueves": false,
+          "Viernes": false,
+          "Sabado": false,
+        };
+        currentWeek = newWeekId;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                "Semana cerrada con éxito. ¡Puedes comenzar una nueva semana!")),
+      );
+    } catch (e) {
+      print("Error al cerrar la semana: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                "Ocurrió un error al cerrar la semana. Intenta de nuevo.")),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Hola $nombre'), // Saludo personalizado
+        title: Text(
+            'Hola $nombre - Semana actual: ${currentWeek ?? "Cargando..."}'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
+        ),
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-              child: Text('Menu'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const EmployeeHoursScreen()),
+      drawer: const menuCustomEmployee(),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              children: closedDays.keys.map((day) {
+                return Card(
+                  child: ListTile(
+                    title: Text(
+                      day,
+                      style: TextStyle(
+                        color: closedDays[day]! ? Colors.grey : Colors.black,
+                        fontWeight: closedDays[day]!
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    subtitle: closedDays[day]!
+                        ? const Text(
+                            "Día cerrado",
+                            style: TextStyle(color: Colors.red),
+                          )
+                        : null,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.check),
+                      onPressed: closedDays[day]! ? null : () => _closeDay(day),
+                    ),
+                    onTap: () => _showEmployees(day),
+                  ),
                 );
-              },
+              }).toList(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              onPressed: () => _closeWeekAndResetDays(),
               icon: const Icon(Icons.calendar_today),
-              label: const Text('Semanas trabajadas'),
+              label: const Text("Cerrar semana"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 50),
+                minimumSize: const Size(double.infinity, 50),
               ),
             ),
-            ListTile(
-              title: const Text('Logout'),
-              onTap: () {
-                _logout(context); // Cerrar sesión
-              },
-            ),
-          ],
-        ),
-      ),
-      body: ListView(
-        children: workedHours.keys.map((day) {
-          return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Card(
-              child: ListTile(
-                title: Text(day),
-                subtitle: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove),
-                      onPressed: () => decrement(day),
-                    ),
-                    Text(workedHours[day].toString()),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () => increment(day),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton(
-          onPressed: _submitHours,
-          child: const Text('Submit Hours'),
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -364,12 +840,27 @@ class _EmployeeHoursScreenState extends State<EmployeeHoursScreen> {
               decoration: BoxDecoration(
                 color: Colors.blue,
               ),
-              child: Text('Menu'),
+              child: Text(
+                'Menu ArchiTask',
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
             ),
             const SizedBox(height: 20),
             ListTile(
-              leading: const Icon(Icons.home),
-              title: const Text('Página principal'),
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Semanas Trabajadas'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const EmployeeHoursScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Dias de Trabajo'),
               onTap: () {
                 Navigator.of(context).pop();
                 Navigator.pushReplacement(
