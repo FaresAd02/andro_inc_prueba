@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
-import 'employee_hours.dart';
+import 'login.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,240 +28,6 @@ class MainApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       home: AuthCheck(),
     );
-  }
-}
-
-class AuthCheck extends StatefulWidget {
-  const AuthCheck({super.key});
-
-  @override
-  _AuthCheckState createState() => _AuthCheckState();
-}
-
-class _AuthCheckState extends State<AuthCheck> {
-  bool _isLoading = true;
-  String? _role;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthState();
-  }
-
-  Future<void> _checkAuthState() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      if (userDoc.exists && userDoc['rol'] != null) {
-        setState(() {
-          _role = userDoc['rol'];
-          _isLoading = false;
-        });
-      } else {
-        await FirebaseAuth.instance.signOut();
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } else {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    } else if (FirebaseAuth.instance.currentUser == null) {
-      return LoginPage();
-    } else if (_role == 'admin') {
-      return const AdminPage();
-    } else {
-      return const UserHoursPage();
-    }
-  }
-}
-
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
-
-  @override
-  _LoginPageState createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isLoading = false;
-  bool _isPasswordVisible = false;
-  String _errorMessage = '';
-
-  Future<void> _login() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
-
-    try {
-      UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .get();
-
-      if (userDoc.exists) {
-        String rol = userDoc['rol'];
-        if (rol == 'admin') {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const AdminPage()),
-            (Route<dynamic> route) => false,
-          );
-        } else if (rol == 'user') {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const UserHoursPage()),
-            (Route<dynamic> route) => false,
-          );
-        }
-      } else {
-        setState(() {
-          _errorMessage = 'Documento del usuario no encontrado.';
-        });
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        if (e.code == 'user-not-found') {
-          _errorMessage = 'Usuario no encontrado.';
-        } else if (e.code == 'wrong-password') {
-          _errorMessage = 'Contraseña incorrecta.';
-        } else {
-          _errorMessage = 'Error: ${e.message}';
-        }
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _resetPassword() async {
-    String email = _emailController.text.trim();
-    if (email.isEmpty) {
-      setState(() {
-        _errorMessage = 'Por favor, ingrese su correo electrónico.';
-      });
-      return;
-    }
-
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Se ha enviado un enlace para restablecer tu contraseña.'),
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error al enviar el correo de restablecimiento: $e';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              'assets/logo.png',
-              height: 120,
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              '¡Bienvenido a ArchiTask!',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.blueAccent,
-              ),
-            ),
-            const SizedBox(height: 40),
-            TextField(
-              controller: _emailController,
-              decoration:
-                  const InputDecoration(labelText: 'Correo electrónico'),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _passwordController,
-              obscureText:
-                  !_isPasswordVisible, // Controla la visibilidad de la contraseña
-              decoration: InputDecoration(
-                labelText: 'Contraseña',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isPasswordVisible = !_isPasswordVisible;
-                    });
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (_errorMessage.isNotEmpty)
-              Text(
-                _errorMessage,
-                style: const TextStyle(color: Colors.red),
-              ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    onPressed: _login,
-                    child: const Text('Iniciar sesión'),
-                  ),
-            const SizedBox(height: 20),
-            TextButton(
-              onPressed: () async {
-                await _resetPassword();
-              },
-              child: const Text(
-                '¿Olvidaste tu contraseña?',
-                style: TextStyle(color: Colors.blue),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
   }
 }
 
@@ -738,6 +504,145 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
     );
   }
 
+  void _editJobOfLastWeek(int weekIndex, int jobIndex) {
+    var job = localWeeks[weekIndex]['jobs'][jobIndex];
+    TextEditingController jobNameController =
+        TextEditingController(text: job['name']);
+    String? selectedCuadrillaId = job['cuadrillaId'];
+    Map<String, dynamic>? selectedCuadrillaDetails;
+
+    final CollectionReference cuadrillasCollection =
+        FirebaseFirestore.instance.collection('worked_cuadrillas');
+
+    Future<List<Map<String, dynamic>>> _loadCuadrillas() async {
+      try {
+        QuerySnapshot snapshot = await cuadrillasCollection.get();
+        return snapshot.docs.map((doc) {
+          return {
+            'id': doc.id,
+            'description': doc['description'],
+            'responsable': doc['responsable'],
+          };
+        }).toList();
+      } catch (e) {
+        print("Error al cargar cuadrillas: $e");
+        return [];
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future: _loadCuadrillas(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError || !snapshot.hasData) {
+              return AlertDialog(
+                title: const Text('Error'),
+                content: const Text('No se pudieron cargar las cuadrillas'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ],
+              );
+            }
+
+            var cuadrillas = snapshot.data!;
+
+            return StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                return AlertDialog(
+                  title: const Text('Editar trabajo'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: jobNameController,
+                        decoration: const InputDecoration(
+                            hintText: 'Nombre del trabajo'),
+                      ),
+                      const SizedBox(height: 20),
+                      DropdownButton<String>(
+                        value: selectedCuadrillaId,
+                        hint: const Text('Seleccionar Cuadrilla'),
+                        isExpanded: true,
+                        items: cuadrillas.map((cuadrilla) {
+                          return DropdownMenuItem<String>(
+                            value: cuadrilla['id'],
+                            child: Text(
+                                "${cuadrilla['description']} - Responsable: ${cuadrilla['responsable']}"),
+                          );
+                        }).toList(),
+                        onChanged: (String? value) {
+                          setState(() {
+                            selectedCuadrillaId = value;
+                            selectedCuadrillaDetails = cuadrillas.firstWhere(
+                                (cuadrilla) => cuadrilla['id'] == value);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Cancelar'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (jobNameController.text.isNotEmpty &&
+                            selectedCuadrillaId != null) {
+                          var updatedJob = {
+                            'name': jobNameController.text.trim(),
+                            'completed': job['completed'],
+                            'cuadrillaId': selectedCuadrillaId,
+                            'cuadrillaDescription':
+                                selectedCuadrillaDetails?['description'] ??
+                                    job['cuadrillaDescription'],
+                            'cuadrillaResponsable':
+                                selectedCuadrillaDetails?['responsable'] ??
+                                    job['cuadrillaResponsable'],
+                          };
+
+                          await weeksCollection
+                              .doc(localWeeks[weekIndex]['week'])
+                              .update({
+                            'jobs': FieldValue.arrayRemove([job]),
+                          });
+                          await weeksCollection
+                              .doc(localWeeks[weekIndex]['week'])
+                              .update({
+                            'jobs': FieldValue.arrayUnion([updatedJob]),
+                          });
+
+                          setState(() {
+                            localWeeks[weekIndex]['jobs'][jobIndex] =
+                                updatedJob;
+                          });
+
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: const Text('Guardar'),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showJobsDialog(BuildContext context, int index) {
     showDialog(
       context: context,
@@ -765,11 +670,21 @@ class _WorkedWeeksPageState extends State<WorkedWeeksPage> {
                         const Text('Cuadrilla: No asignada'),
                     ],
                   ),
-                  trailing: Icon(
-                    job['completed']
-                        ? Icons.check_circle_outline
-                        : Icons.radio_button_unchecked,
-                    color: job['completed'] ? Colors.green : Colors.red,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        job['completed']
+                            ? Icons.check_circle_outline
+                            : Icons.radio_button_unchecked,
+                        color: job['completed'] ? Colors.green : Colors.red,
+                      ),
+                      if (index == localWeeks.length - 1)
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _editJobOfLastWeek(index, jobIndex),
+                        ),
+                    ],
                   ),
                 );
               },
@@ -1377,6 +1292,18 @@ class _UserPageState extends State<UserPage> {
         password.isNotEmpty &&
         role != 'Seleccione') {
       try {
+        // Verificar si el nombre de usuario ya existe en Firestore
+        QuerySnapshot existingUsers = await FirebaseFirestore.instance
+            .collection('users')
+            .where('name', isEqualTo: name)
+            .get();
+
+        if (existingUsers.docs.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('El nombre de usuario ya está en uso')),
+          );
+          return; // Salir del método si el nombre ya existe
+        }
         UserCredential userCredential =
             await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
@@ -1395,6 +1322,7 @@ class _UserPageState extends State<UserPage> {
           SnackBar(content: Text('Usuario $name creado como $role con éxito')),
         );
 
+        // Limpiar los campos del formulario
         _createNameController.clear();
         _createEmailController.clear();
         _createPasswordController.clear();

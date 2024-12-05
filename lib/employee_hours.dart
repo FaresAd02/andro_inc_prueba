@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'main.dart';
+import 'login.dart';
 
 final CollectionReference weeksCollection =
     FirebaseFirestore.instance.collection('worked_weeks');
@@ -38,8 +38,7 @@ class menuCustomEmployee extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.person),
             title: const Text('Dias de Trabajo'),
-            onTap: () async {
-              await FirebaseAuth.instance.signOut();
+            onTap: () {
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const UserHoursPage()),
                 (Route<dynamic> route) => false,
@@ -233,7 +232,7 @@ class _UserHoursPageState extends State<UserHoursPage> {
         if (weekData['days'] != null && weekData['days'][dia] != null) {
           int employeeCount = (weekData['days'][dia] as Map).length;
 
-          if (employeeCount < 8) {
+          if (employeeCount < 2) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                   content: Text(
@@ -282,40 +281,82 @@ class _UserHoursPageState extends State<UserHoursPage> {
     }
   }
 
-  void _showEmployees(String day) async {
-    List<Map<String, dynamic>> employees = await _fetchEmployees(day);
-
+  void _showEmployees(String day) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Empleados para $day'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: employees.length,
-              itemBuilder: (context, index) {
-                final employee = employees[index];
-                return ListTile(
-                  title: Text(employee['nombre']),
-                  subtitle: Text(
-                      "Entrada: ${employee['entrada']} - Salida: ${employee['salida']}"),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar'),
-            ),
-            if (!(closedDays[day] ?? false))
-              TextButton(
-                onPressed: () => _addEmployeePopup(context, day),
-                child: const Text('Agregar empleado'),
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('employee_hours')
+              .doc(currentWeek)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError ||
+                !snapshot.hasData ||
+                !snapshot.data!.exists) {
+              return AlertDialog(
+                title: Text('Empleados para $day'),
+                content: const Text("No se pudieron cargar los empleados."),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ],
+              );
+            }
+
+            User? user = FirebaseAuth.instance.currentUser;
+            if (user == null) {
+              return const Center(child: Text("Usuario no autenticado."));
+            }
+
+            final data = snapshot.data!.data() as Map<String, dynamic>?;
+            final responsableName = data?[nombre]?['dias']?[day];
+            final employees = responsableName?.entries.map((entry) {
+                  final employeeData = entry.value as Map<String, dynamic>;
+                  return {
+                    'nombre': entry.key,
+                    'entrada': employeeData['entrada'] ?? 'No especificada',
+                    'salida': employeeData['salida'] ?? 'No especificada',
+                  };
+                }).toList() ??
+                [];
+
+            return AlertDialog(
+              title: Text('Empleados para $day'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: employees.length,
+                  itemBuilder: (context, index) {
+                    final employee = employees[index];
+                    return ListTile(
+                      title: Text(employee['nombre']),
+                      subtitle: Text(
+                          "Entrada: ${employee['entrada']} - Salida: ${employee['salida']}"),
+                    );
+                  },
+                ),
               ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cerrar'),
+                ),
+                if (!(closedDays[day] ?? false))
+                  TextButton(
+                    onPressed: () => _addEmployeePopup(context, day),
+                    child: const Text('Agregar empleado'),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
@@ -361,30 +402,52 @@ class _UserHoursPageState extends State<UserHoursPage> {
   }
 
   void _addEmployeePopup(BuildContext context, String day) {
-    TextEditingController nombreController = TextEditingController();
+    String? selectedEmployee;
     TimeOfDay? horaEntrada;
     TimeOfDay? horaSalida;
 
-    void _selectEntryTime(
-        BuildContext context, Function(TimeOfDay) onTimeSelected) async {
-      final TimeOfDay? picked = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.now(),
-        initialEntryMode:
-            TimePickerEntryMode.input, // Modo de entrada de texto por defecto
-      );
-      if (picked != null) {
-        onTimeSelected(picked);
+    Future<List<String>> _fetchEmployeesList() async {
+      try {
+        QuerySnapshot employeesSnapshot =
+            await FirebaseFirestore.instance.collection('employees').get();
+        return employeesSnapshot.docs
+            .map((doc) => "${doc['name']} ${doc['lastname']}")
+            .toList();
+      } catch (e) {
+        print("Error al obtener empleados: $e");
+        return [];
       }
     }
 
-    void _selectExitTime(
+    Future<String> _fetchResponsableName() async {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception("Usuario no autenticado.");
+      }
+
+      try {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+
+        if (userDoc.exists && userDoc['name'] != null) {
+          return userDoc['name'];
+        } else {
+          throw Exception(
+              "El nombre del usuario no está definido en Firestore.");
+        }
+      } catch (e) {
+        throw Exception("Error obteniendo el nombre del responsable: $e");
+      }
+    }
+
+    void _selectTime(
         BuildContext context, Function(TimeOfDay) onTimeSelected) async {
       final TimeOfDay? picked = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
-        initialEntryMode:
-            TimePickerEntryMode.input, // Modo de entrada de texto por defecto
+        initialEntryMode: TimePickerEntryMode.input,
       );
       if (picked != null) {
         onTimeSelected(picked);
@@ -394,119 +457,148 @@ class _UserHoursPageState extends State<UserHoursPage> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text("Agregar empleado"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nombreController,
-                    decoration: const InputDecoration(labelText: "Nombre"),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    title: const Text("Hora de entrada"),
-                    subtitle: Text(
-                      horaEntrada != null
-                          ? horaEntrada!.format(context)
-                          : "Selecciona una hora",
-                    ),
-                    trailing: const Icon(Icons.access_time),
-                    onTap: () {
-                      _selectEntryTime(context, (selectedTime) {
-                        setState(() {
-                          horaEntrada = selectedTime;
-                        });
-                      });
-                    },
-                  ),
-                  ListTile(
-                    title: const Text("Hora de salida"),
-                    subtitle: Text(
-                      horaSalida != null
-                          ? horaSalida!.format(context)
-                          : "Selecciona una hora",
-                    ),
-                    trailing: const Icon(Icons.access_time),
-                    onTap: () {
-                      _selectEntryTime(context, (selectedTime) {
-                        setState(() {
-                          horaSalida = selectedTime;
-                        });
-                      });
-                    },
+        return FutureBuilder<List<String>>(
+          future: _fetchEmployeesList(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError ||
+                !snapshot.hasData ||
+                snapshot.data!.isEmpty) {
+              return AlertDialog(
+                title: const Text("Error"),
+                content: const Text("No se pudieron cargar los empleados."),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
                   ),
                 ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    if (nombreController.text.isNotEmpty &&
-                        horaEntrada != null &&
-                        horaSalida != null) {
-                      try {
-                        DocumentReference weekDocRef = FirebaseFirestore
-                            .instance
-                            .collection('employee_hours')
-                            .doc(currentWeek);
+              );
+            }
 
-                        DocumentSnapshot weekSnapshot = await weekDocRef.get();
+            List<String> employees = snapshot.data!;
 
-                        if (weekSnapshot.exists) {
-                          await weekDocRef.update({
-                            'days.$day.${nombreController.text}': {
-                              'entrada': horaEntrada!.format(context),
-                              'salida': horaSalida!.format(context),
-                            },
+            return StatefulBuilder(
+              builder: (context, setState) {
+                return AlertDialog(
+                  title: const Text("Agregar empleado"),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButton<String>(
+                        value: selectedEmployee,
+                        hint: const Text("Selecciona un empleado"),
+                        isExpanded: true,
+                        items: employees.map((employee) {
+                          return DropdownMenuItem<String>(
+                            value: employee,
+                            child: Text(employee),
+                          );
+                        }).toList(),
+                        onChanged: (String? value) {
+                          setState(() {
+                            selectedEmployee = value;
                           });
-                        } else {
-                          await weekDocRef.set({
-                            'week': currentWeek,
-                            'days': {
-                              day: {
-                                nombreController.text: {
-                                  'entrada': horaEntrada!.format(context),
-                                  'salida': horaSalida!.format(context),
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        title: const Text("Hora de entrada"),
+                        subtitle: Text(
+                          horaEntrada != null
+                              ? horaEntrada!.format(context)
+                              : "Selecciona una hora",
+                        ),
+                        trailing: const Icon(Icons.access_time),
+                        onTap: () {
+                          _selectTime(context, (selectedTime) {
+                            setState(() {
+                              horaEntrada = selectedTime;
+                            });
+                          });
+                        },
+                      ),
+                      ListTile(
+                        title: const Text("Hora de salida"),
+                        subtitle: Text(
+                          horaSalida != null
+                              ? horaSalida!.format(context)
+                              : "Selecciona una hora",
+                        ),
+                        trailing: const Icon(Icons.access_time),
+                        onTap: () {
+                          _selectTime(context, (selectedTime) {
+                            setState(() {
+                              horaSalida = selectedTime;
+                            });
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        if (selectedEmployee != null &&
+                            horaEntrada != null &&
+                            horaSalida != null) {
+                          try {
+                            String responsable = await _fetchResponsableName();
+
+                            DocumentReference weekDocRef = FirebaseFirestore
+                                .instance
+                                .collection('employee_hours')
+                                .doc(currentWeek);
+
+                            await weekDocRef.set({
+                              responsable: {
+                                "dias": {
+                                  day: {
+                                    selectedEmployee: {
+                                      "entrada": horaEntrada!.format(context),
+                                      "salida": horaSalida!.format(context),
+                                    },
+                                  },
                                 },
                               },
-                            },
-                          });
-                        }
+                            }, SetOptions(merge: true));
 
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                "Empleado agregado exitosamente: ${nombreController.text}"),
-                          ),
-                        );
-                        _fetchEmployees(day);
-                      } catch (e) {
-                        print("Error agregando empleado: $e");
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                "Error al agregar el empleado: ${e.toString()}"),
-                          ),
-                        );
-                      }
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                "Por favor, completa todos los campos antes de guardar.")),
-                      );
-                    }
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    "Empleado agregado exitosamente: $selectedEmployee"),
+                              ),
+                            );
+                          } catch (e) {
+                            print("Error agregando empleado: $e");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    "Error al agregar el empleado: ${e.toString()}"),
+                              ),
+                            );
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    "Por favor, completa todos los campos.")),
+                          );
+                        }
+                      },
+                      child: const Text('Guardar'),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -831,59 +923,16 @@ class _EmployeeHoursScreenState extends State<EmployeeHoursScreen> {
             onPressed: _fetchFilteredWeeks, // Cargar los datos más recientes
           ),
         ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-              child: Text(
-                'Menu ArchiTask',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('Semanas Trabajadas'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const EmployeeHoursScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('Dias de Trabajo'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const UserHoursPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Logout'),
-              onTap: () {
-                FirebaseAuth.instance.signOut();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginPage()),
-                );
-              },
-            ),
-          ],
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
         ),
       ),
+      drawer: const menuCustomEmployee(),
       body: filteredWeeks.isEmpty
           ? const Center(child: Text('No hay trabajos asignados para ti.'))
           : ListView.builder(
