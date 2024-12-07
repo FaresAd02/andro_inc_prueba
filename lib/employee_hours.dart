@@ -91,11 +91,69 @@ class _UserHoursPageState extends State<UserHoursPage> {
         setState(() {
           currentWeek = week;
         });
+        _ensureCurrentWeekExists();
         _fetchClosedDays(); // Ahora se ejecuta después de asignar currentWeek
       } else {
         print("No se encontró ninguna semana en Firestore.");
       }
     });
+  }
+
+  Future<void> _ensureCurrentWeekExists() async {
+    if (currentWeek == null) {
+      print("No hay una semana actual definida.");
+      return;
+    }
+
+    try {
+      // Obtener el usuario autenticado actual
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        print("No hay usuario autenticado.");
+        return;
+      }
+
+      // Obtener el nombre del usuario autenticado
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      String responsable = userDoc['name'] ?? "Desconocido";
+
+      // Verificar si el documento de la semana actual existe en `employee_hours`
+      DocumentSnapshot weekDoc = await FirebaseFirestore.instance
+          .collection('employee_hours')
+          .doc(currentWeek)
+          .get();
+
+      if (!weekDoc.exists) {
+        // Crear el documento si no existe, con el responsable como un mapa
+        await FirebaseFirestore.instance
+            .collection('employee_hours')
+            .doc(currentWeek)
+            .set({
+          responsable: {
+            'dias': {
+              "Lunes": {},
+              "Martes": {},
+              "Miercoles": {},
+              "Jueves": {},
+              "Viernes": {},
+              "Sabado": {},
+            },
+          },
+        });
+
+        print(
+            "Documento de la semana actual creado exitosamente en employee_hours con responsable $responsable.");
+      } else {
+        print("El documento de la semana actual ya existe en employee_hours.");
+      }
+    } catch (e) {
+      print(
+          "Error al verificar o crear la semana actual en employee_hours: $e");
+    }
   }
 
   Future<void> _getUserName() async {
@@ -316,44 +374,47 @@ class _UserHoursPageState extends State<UserHoursPage> {
             }
 
             final data = snapshot.data!.data() as Map<String, dynamic>?;
-            final responsableName = data?[nombre]?['dias']?[day];
-            final employees = responsableName?.entries.map((entry) {
-                  final employeeData = entry.value as Map<String, dynamic>;
-                  return {
-                    'nombre': entry.key,
-                    'entrada': employeeData['entrada'] ?? 'No especificada',
-                    'salida': employeeData['salida'] ?? 'No especificada',
-                  };
-                }).toList() ??
-                [];
+            final dayData =
+                data?[nombre]?['dias']?[day] as Map<String, dynamic>? ?? {};
+
+            final employees = dayData.entries.map((entry) {
+              final employeeData = entry.value as Map<String, dynamic>;
+              return {
+                'nombre': entry.key,
+                'entrada': employeeData['entrada'] ?? 'No especificada',
+                'salida': employeeData['salida'] ?? 'No especificada',
+              };
+            }).toList();
 
             return AlertDialog(
               title: Text('Empleados para $day'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: employees.length,
-                  itemBuilder: (context, index) {
-                    final employee = employees[index];
-                    return ListTile(
-                      title: Text(employee['nombre']),
-                      subtitle: Text(
-                          "Entrada: ${employee['entrada']} - Salida: ${employee['salida']}"),
-                    );
-                  },
-                ),
-              ),
+              content: employees.isEmpty
+                  ? const Text("No hay empleados registrados para este día.")
+                  : SizedBox(
+                      width: double.maxFinite,
+                      height: 300, // Ajusta esta altura según tu necesidad
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: employees.length,
+                        itemBuilder: (context, index) {
+                          final employee = employees[index];
+                          return ListTile(
+                            title: Text(employee['nombre']),
+                            subtitle: Text(
+                                "Entrada: ${employee['entrada']} - Salida: ${employee['salida']}"),
+                          );
+                        },
+                      ),
+                    ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Cerrar'),
                 ),
-                if (!(closedDays[day] ?? false))
-                  TextButton(
-                    onPressed: () => _addEmployeePopup(context, day),
-                    child: const Text('Agregar empleado'),
-                  ),
+                TextButton(
+                  onPressed: () => _addEmployeePopup(context, day),
+                  child: const Text('Agregar empleado'),
+                ),
               ],
             );
           },
@@ -369,6 +430,21 @@ class _UserHoursPageState extends State<UserHoursPage> {
         return [];
       }
 
+      // Obtener el usuario autenticado actual
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        print("No hay usuario autenticado.");
+        return [];
+      }
+
+      // Obtener el nombre del responsable (usuario actual)
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+      String responsable = userDoc['name'] ?? "Desconocido";
+
+      // Obtener los datos de la semana actual desde Firestore
       DocumentSnapshot weekSnapshot = await FirebaseFirestore.instance
           .collection('employee_hours')
           .doc(currentWeek)
@@ -378,10 +454,14 @@ class _UserHoursPageState extends State<UserHoursPage> {
         Map<String, dynamic> weekData =
             weekSnapshot.data() as Map<String, dynamic>;
 
-        if (weekData['days'] != null && weekData['days'][day] != null) {
+        // Navegar hasta el nodo correspondiente a los empleados de ese día
+        if (weekData[responsable] != null &&
+            weekData[responsable]['dias'] != null &&
+            weekData[responsable]['dias'][day] != null) {
           Map<String, dynamic> employees =
-              weekData['days'][day] as Map<String, dynamic>;
+              weekData[responsable]['dias'][day] as Map<String, dynamic>;
 
+          // Convertir los datos en una lista de mapas para mostrarlos
           return employees.entries.map((entry) {
             Map<String, dynamic> employeeData =
                 entry.value as Map<String, dynamic>;
@@ -522,7 +602,7 @@ class _UserHoursPageState extends State<UserHoursPage> {
                         },
                       ),
                       ListTile(
-                        title: const Text("Hora de salida"),
+                        title: const Text("Hora de salida (opcional)"),
                         subtitle: Text(
                           horaSalida != null
                               ? horaSalida!.format(context)
@@ -546,9 +626,7 @@ class _UserHoursPageState extends State<UserHoursPage> {
                     ),
                     TextButton(
                       onPressed: () async {
-                        if (selectedEmployee != null &&
-                            horaEntrada != null &&
-                            horaSalida != null) {
+                        if (selectedEmployee != null && horaEntrada != null) {
                           try {
                             String responsable = await _fetchResponsableName();
 
@@ -557,14 +635,20 @@ class _UserHoursPageState extends State<UserHoursPage> {
                                 .collection('employee_hours')
                                 .doc(currentWeek);
 
+                            Map<String, dynamic> employeeData = {
+                              "entrada": horaEntrada!.format(context),
+                            };
+
+                            if (horaSalida != null) {
+                              employeeData["salida"] =
+                                  horaSalida!.format(context);
+                            }
+
                             await weekDocRef.set({
                               responsable: {
                                 "dias": {
                                   day: {
-                                    selectedEmployee: {
-                                      "entrada": horaEntrada!.format(context),
-                                      "salida": horaSalida!.format(context),
-                                    },
+                                    selectedEmployee: employeeData,
                                   },
                                 },
                               },
@@ -590,7 +674,7 @@ class _UserHoursPageState extends State<UserHoursPage> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content: Text(
-                                    "Por favor, completa todos los campos.")),
+                                    "Por favor, completa todos los campos obligatorios.")),
                           );
                         }
                       },
